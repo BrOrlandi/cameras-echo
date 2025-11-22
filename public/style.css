@@ -1,9 +1,10 @@
 :root {
-    --pip-width: 35vh; /* Aspect ratio 16:9 based on height */
-    --pip-height: 20vh;
+    --pip-height: 28vh;
+    --pip-width: calc(var(--pip-height) * (16 / 9));
 }
 
-body, html {
+body,
+html {
     margin: 0;
     padding: 0;
     width: 100%;
@@ -47,12 +48,13 @@ video {
 .video-container.pip {
     bottom: 20px;
     right: 20px;
-    height: 20vh;
-    width: 35.5vh; /* 16:9 of 20vh */
+    height: var(--pip-height);
+    width: var(--pip-width);
+
     z-index: 10;
     border: 2px solid rgba(255, 255, 255, 0.2);
     border-radius: 8px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
     cursor: pointer;
 }
 
@@ -89,7 +91,7 @@ video {
     font-size: 1.5em;
     font-weight: bold;
     margin-bottom: 10px;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
 }
 
 .status {

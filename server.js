@@ -17,7 +17,7 @@ if (!fs.existsSync(hlsDir)) {
 }
 
 // Clean up old files on startup
-fs.readdirSync(hlsDir).forEach(f => fs.unlinkSync(path.join(hlsDir, f)));
+fs.readdirSync(hlsDir).forEach(f => fs.rmSync(path.join(hlsDir, f), { recursive: true, force: true }));
 
 const cameras = [];
 const streams = {};
