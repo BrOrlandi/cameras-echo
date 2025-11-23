@@ -34,48 +34,79 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Set name in overlay
         overlayEl.querySelector('.camera-name').textContent = camera.name;
 
-        if (Hls.isSupported()) {
-            const hls = new Hls({
-                manifestLoadingTimeOut: 5000,
-                manifestLoadingMaxRetry: Infinity,
-                manifestLoadingRetryDelay: 1000,
-            });
-            hls.loadSource(camera.streamUrl);
-            hls.attachMedia(videoEl);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                videoEl.play().catch(e => console.log('Autoplay prevented', e));
-                overlayEl.classList.remove('visible');
-            });
-            hls.on(Hls.Events.ERROR, (event, data) => {
-                if (data.fatal) {
-                    overlayEl.classList.add('visible');
-                    switch (data.type) {
-                        case Hls.ErrorTypes.NETWORK_ERROR:
-                            console.log('fatal network error encountered, try to recover');
-                            hls.startLoad();
-                            break;
-                        case Hls.ErrorTypes.MEDIA_ERROR:
-                            console.log('fatal media error encountered, try to recover');
-                            hls.recoverMediaError();
-                            break;
-                        default:
-                            hls.destroy();
-                            break;
-                    }
+        const startPlayback = () => {
+            if (Hls.isSupported()) {
+                if (hlsInstances[camera.id]) {
+                    hlsInstances[camera.id].destroy();
                 }
-            });
-            hlsInstances[camera.id] = hls;
-        } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-            videoEl.src = camera.streamUrl;
-            videoEl.addEventListener('loadedmetadata', () => {
-                videoEl.play();
-                overlayEl.classList.remove('visible');
-            });
-            videoEl.addEventListener('error', () => {
-                overlayEl.classList.add('visible');
-            });
-        }
+
+                const hls = new Hls({
+                    manifestLoadingTimeOut: 5000,
+                    manifestLoadingMaxRetry: Infinity,
+                    manifestLoadingRetryDelay: 1000,
+                });
+
+                hls.loadSource(camera.streamUrl);
+                hls.attachMedia(videoEl);
+
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    videoEl.play().catch(e => console.log('Autoplay prevented', e));
+                    overlayEl.classList.remove('visible');
+                });
+
+                hls.on(Hls.Events.ERROR, (event, data) => {
+                    if (data.fatal) {
+                        overlayEl.classList.add('visible');
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                console.log(`Network error on ${camera.name}, retrying...`);
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                console.log(`Media error on ${camera.name}, recovering...`);
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                console.log(`Fatal error on ${camera.name}, restarting player in 5s...`);
+                                hls.destroy();
+                                setTimeout(startPlayback, 5000);
+                                break;
+                        }
+                    }
+                });
+                hlsInstances[camera.id] = hls;
+
+            } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+                // Native HLS (Safari/iOS)
+                videoEl.src = camera.streamUrl;
+                
+                const onLoaded = () => {
+                    videoEl.play().catch(e => console.log('Autoplay prevented', e));
+                    overlayEl.classList.remove('visible');
+                };
+
+                const onError = () => {
+                    console.log(`Native HLS error on ${camera.name}, retrying in 5s...`);
+                    overlayEl.classList.add('visible');
+                    setTimeout(() => {
+                        videoEl.src = ""; // Clear to force reload
+                        videoEl.src = camera.streamUrl;
+                    }, 5000);
+                };
+
+                videoEl.removeEventListener('loadedmetadata', onLoaded);
+                videoEl.removeEventListener('error', onError);
+                
+                videoEl.addEventListener('loadedmetadata', onLoaded);
+                videoEl.addEventListener('error', onError);
+            }
+        };
+
+        startPlayback();
     }
+
+    const ICON_MUTED = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>';
+    const ICON_UNMUTED = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>';
 
     // Audio Toggle Logic
     function toggleMute(videoEl, iconEl) {
@@ -88,15 +119,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Unmute target if it was muted
         if (isMuted) {
             videoEl.muted = false;
-            showIcon(iconEl, '🔊');
+            showIcon(iconEl, ICON_UNMUTED);
         } else {
             videoEl.muted = true;
-            showIcon(iconEl, '🔇');
+            showIcon(iconEl, ICON_MUTED);
         }
     }
 
-    function showIcon(iconEl, symbol) {
-        iconEl.textContent = symbol;
+    function showIcon(iconEl, svgContent) {
+        iconEl.innerHTML = svgContent;
         iconEl.classList.remove('animate');
         void iconEl.offsetWidth; // trigger reflow
         iconEl.classList.add('animate');

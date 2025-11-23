@@ -43,6 +43,8 @@ function loadCameras() {
     }
 }
 
+const watchdogs = {};
+
 function startStream(camera) {
     const outputDir = path.join(hlsDir, `cam${camera.id}`);
     if (!fs.existsSync(outputDir)) {
@@ -51,13 +53,24 @@ function startStream(camera) {
 
     const outputPath = path.join(outputDir, 'index.m3u8');
 
+    // Kill existing process if it exists (prevent duplicates)
+    if (streams[camera.id]) {
+        try {
+            streams[camera.id].kill('SIGKILL');
+        } catch (e) { /* ignore */ }
+    }
+
     console.log(`Starting stream for ${camera.name}...`);
 
     const command = ffmpeg(camera.url)
+        .inputOptions([
+            '-timeout', '5000000', // 5 seconds timeout for RTSP (TCP)
+            '-rtsp_transport', 'tcp' // Force TCP for better reliability
+        ])
         .addOptions([
             '-fflags nobuffer',
-            '-c:v copy', // Try copying video stream first to save CPU
-            '-c:a aac',  // Transcode audio to AAC for web compatibility
+            '-c:v copy',
+            '-c:a aac',
             '-b:a 128k',
             '-hls_time 2',
             '-hls_list_size 5',
@@ -66,24 +79,51 @@ function startStream(camera) {
         ])
         .output(outputPath)
         .on('start', (cmd) => {
-            console.log(`Stream ${camera.name} started with command: ${cmd}`);
+            console.log(`Stream ${camera.name} started.`);
+            startWatchdog(camera, outputPath);
         })
-        .on('error', (err, stdout, stderr) => {
+        .on('error', (err) => {
             console.error(`Error processing ${camera.name}:`, err.message);
-            // Retry after delay
-            setTimeout(() => {
-                if (streams[camera.id]) {
-                    console.log(`Retrying ${camera.name}...`);
-                    startStream(camera);
-                }
-            }, 5000);
+            scheduleRetry(camera);
         })
         .on('end', () => {
-            console.log(`Stream ${camera.name} ended.`);
+            console.log(`Stream ${camera.name} ended unexpectedly.`);
+            scheduleRetry(camera);
         });
 
     command.run();
     streams[camera.id] = command;
+}
+
+function scheduleRetry(camera) {
+    if (watchdogs[camera.id]) clearInterval(watchdogs[camera.id]);
+    
+    // Avoid rapid loops
+    setTimeout(() => {
+        console.log(`Retrying ${camera.name}...`);
+        startStream(camera);
+    }, 5000);
+}
+
+function startWatchdog(camera, filePath) {
+    if (watchdogs[camera.id]) clearInterval(watchdogs[camera.id]);
+
+    watchdogs[camera.id] = setInterval(() => {
+        fs.stat(filePath, (err, stats) => {
+            // If file doesn't exist yet, that's fine, wait for it
+            if (err) return;
+
+            const now = Date.now();
+            const mtime = new Date(stats.mtime).getTime();
+            const diff = now - mtime;
+
+            // If file hasn't updated in 10 seconds, restart
+            if (diff > 10000) {
+                console.warn(`Watchdog: Stream ${camera.name} froze (${diff}ms since last update). Restarting...`);
+                startStream(camera);
+            }
+        });
+    }, 5000);
 }
 
 // API to get camera list
