@@ -113,8 +113,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const currentlyMuted = videoEl.muted;
         
         // Mute all first (optional, but good for single-stream audio focus)
-        // mainVideo.muted = true;
-        // pipVideo.muted = true;
+        mainVideo.muted = true;
+        pipVideo.muted = true;
 
         if (currentlyMuted) {
             // Currently muted, so UNMUTE
