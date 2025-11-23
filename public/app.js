@@ -110,17 +110,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Audio Toggle Logic
     function toggleMute(videoEl, iconEl) {
-        const isMuted = !videoEl.muted;
+        const currentlyMuted = videoEl.muted;
         
-        // Mute all first
-        mainVideo.muted = true;
-        pipVideo.muted = true;
+        // Mute all first (optional, but good for single-stream audio focus)
+        // mainVideo.muted = true;
+        // pipVideo.muted = true;
 
-        // Unmute target if it was muted
-        if (isMuted) {
+        if (currentlyMuted) {
+            // Currently muted, so UNMUTE
             videoEl.muted = false;
+            videoEl.volume = 1.0;
             showIcon(iconEl, ICON_UNMUTED);
         } else {
+            // Currently unmuted, so MUTE
             videoEl.muted = true;
             showIcon(iconEl, ICON_MUTED);
         }
@@ -288,4 +290,37 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     }
+
+    // Refresh Logic
+    const refreshBtn = document.getElementById('refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.location.reload();
+        });
+    }
+
+    // Idle Timer Logic
+    let idleTimeout;
+    const IDLE_DELAY = 3000; // Hide after 3 seconds of inactivity
+
+    function resetIdleTimer() {
+        document.body.classList.add('user-active');
+        
+        if (idleTimeout) {
+            clearTimeout(idleTimeout);
+        }
+
+        idleTimeout = setTimeout(() => {
+            document.body.classList.remove('user-active');
+        }, IDLE_DELAY);
+    }
+
+    // Track user activity
+    ['mousemove', 'mousedown', 'touchstart', 'click', 'keydown'].forEach(evt => {
+        document.addEventListener(evt, resetIdleTimer, { passive: true });
+    });
+
+    // Initial activation
+    resetIdleTimer();
 });

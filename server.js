@@ -69,9 +69,14 @@ function startStream(camera) {
         ])
         .addOptions([
             '-fflags nobuffer',
-            '-c:v copy',
+            '-map 0:v',    // Map video
+            '-map 0:a',    // Map audio
+            '-c:v h264_videotoolbox', // Hardware accelerated H.264
+            '-b:v 2000k',  // Reasonable bitrate
             '-c:a aac',
             '-b:a 128k',
+            '-ac 2',
+            '-af volume=15dB',
             '-hls_time 2',
             '-hls_list_size 5',
             '-hls_flags delete_segments',
