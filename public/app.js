@@ -136,20 +136,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, 1000);
     }
 
-    // Click Handlers (Single vs Double)
-    let clickTimeout;
-    const CLICK_DELAY = 300;
+    // Click Handlers (Immediate Action + Undo for Double Click)
+    let lastClickTime = 0;
+    const DOUBLE_CLICK_DELAY = 300;
 
     function handleClick(container, videoEl, iconEl, isMain) {
-        if (clickTimeout) {
-            clearTimeout(clickTimeout);
-            clickTimeout = null;
+        const now = Date.now();
+        const timeDiff = now - lastClickTime;
+
+        if (timeDiff < DOUBLE_CLICK_DELAY) {
+            // Double click detected
+            // Undo the previous toggle (toggle back)
+            toggleMute(videoEl, iconEl);
+            
+            // Perform double click action
             handleDoubleClick(isMain);
+            
+            // Reset time to prevent triple-click triggering another double-click immediately
+            lastClickTime = 0;
         } else {
-            clickTimeout = setTimeout(() => {
-                clickTimeout = null;
-                toggleMute(videoEl, iconEl);
-            }, CLICK_DELAY);
+            // Single click (potential)
+            // Execute immediately to satisfy browser user activation policies
+            toggleMute(videoEl, iconEl);
+            lastClickTime = now;
         }
     }
 
@@ -261,5 +270,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Apply to the currently MAIN video
         const target = isSwapped ? pipVideo : mainVideo;
         target.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`;
+    }
+
+    // Fullscreen Logic
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    if (fullscreenBtn) {
+        fullscreenBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        });
     }
 });
