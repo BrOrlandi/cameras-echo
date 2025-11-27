@@ -71,7 +71,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                   `Fatal error on ${camera.name}, restarting player in 5s...`
                 );
                 hls.destroy();
-                setTimeout(startPlayback, 5000);
+                setTimeout(startPlayback, 3000);
                 break;
             }
           }
@@ -92,7 +92,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           setTimeout(() => {
             videoEl.src = ''; // Clear to force reload
             videoEl.src = camera.streamUrl;
-          }, 5000);
+          }, 3000);
         };
 
         videoEl.removeEventListener('loadedmetadata', onLoaded);
@@ -149,21 +149,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     const now = Date.now();
     const timeDiff = now - lastClickTime;
 
-    if (timeDiff < DOUBLE_CLICK_DELAY) {
-      // Double click detected
-      // Undo the previous toggle (toggle back)
-      toggleMute(videoEl, iconEl);
+    if (isMain) {
+      if (timeDiff < DOUBLE_CLICK_DELAY) {
+        // Double click detected on Main
+        // Undo the previous toggle (toggle back)
+        toggleMute(videoEl, iconEl);
 
-      // Perform double click action
-      handleDoubleClick(isMain);
+        // Perform double click action (Minimize PIP)
+        handleDoubleClick(isMain);
 
-      // Reset time to prevent triple-click triggering another double-click immediately
-      lastClickTime = 0;
+        lastClickTime = 0;
+      } else {
+        // Single click on Main
+        toggleMute(videoEl, iconEl);
+        lastClickTime = now;
+      }
     } else {
-      // Single click (potential)
-      // Execute immediately to satisfy browser user activation policies
-      toggleMute(videoEl, iconEl);
-      lastClickTime = now;
+      // Click on PIP - Immediate Swap
+      handleDoubleClick(isMain);
+      lastClickTime = 0;
     }
   }
 
@@ -198,6 +202,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       isPipMinimized = false;
       mainContainer.classList.remove('hidden');
       pipContainer.classList.remove('hidden');
+
+      // Mute both cameras on swap to ensure PIP is silent
+      mainVideo.muted = true;
+      pipVideo.muted = true;
     }
   }
 

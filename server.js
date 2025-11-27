@@ -113,7 +113,7 @@ function scheduleRetry(camera) {
   setTimeout(() => {
     console.log(`Retrying ${camera.name}...`);
     startStream(camera);
-  }, 5000);
+  }, 3000);
 }
 
 function startWatchdog(camera, filePath) {
