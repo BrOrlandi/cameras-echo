@@ -24,12 +24,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (cameras[1]) {
       initPlayer(cameras[1], pipVideo, pipOverlay);
     }
+
+    // Set initial icons to muted
+    mainMuteIcon.innerHTML = ICON_MUTED;
+    pipMuteIcon.innerHTML = ICON_MUTED;
   } catch (err) {
     console.error('Failed to load cameras', err);
   }
 
   function initPlayer(camera, videoEl, overlayEl) {
     if (!camera) return;
+
+    // Start muted
+    videoEl.muted = true;
 
     // Set name in overlay
     overlayEl.querySelector('.camera-name').textContent = camera.name;
