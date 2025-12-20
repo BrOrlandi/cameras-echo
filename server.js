@@ -4,9 +4,36 @@ const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
+const winston = require('winston');
+require('winston-daily-rotate-file');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Configure rotating logs (max 50MB per file)
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.printf(({ timestamp, level, message }) => `${timestamp} [${level}]: ${message}`)
+  ),
+  transports: [
+    new winston.transports.DailyRotateFile({
+      filename: 'service-%DATE%.log',
+      datePattern: 'YYYY-MM-DD',
+      maxSize: '50m',
+      maxFiles: '1d',
+    }),
+    new winston.transports.DailyRotateFile({
+      filename: 'service-error-%DATE%.log',
+      datePattern: 'YYYY-MM-DD',
+      level: 'error',
+      maxSize: '50m',
+      maxFiles: '1d',
+    }),
+    new winston.transports.Console()
+  ]
+});
 
 app.use(cors());
 app.use(express.static('public'));
@@ -24,6 +51,7 @@ fs.readdirSync(hlsDir).forEach((f) =>
 
 const cameras = [];
 const streams = {};
+const streamLocks = {}; // Prevent concurrent restarts
 
 function loadCameras() {
   try {
@@ -39,15 +67,24 @@ function loadCameras() {
         });
       }
     });
-    console.log('Loaded cameras:', cameras);
+    logger.info(`Loaded ${cameras.length} cameras: ${cameras.map(c => c.name).join(', ')}`);;
   } catch (err) {
-    console.error('Error reading // removed cameras reference:', err);
+    logger.error(`Error reading cameras.txt: ${err.message}`);
   }
 }
 
 const watchdogs = {};
+const retryTimers = {};
 
-function startStream(camera) {
+async function startStream(camera) {
+  // Prevent concurrent starts for the same camera
+  if (streamLocks[camera.id]) {
+    logger.warn(`Stream for ${camera.name} already starting/stopping, skipping`);
+    return;
+  }
+  
+  streamLocks[camera.id] = true;
+  
   const outputDir = path.join(hlsDir, `cam${camera.id}`);
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
@@ -58,13 +95,20 @@ function startStream(camera) {
   // Kill existing process if it exists (prevent duplicates)
   if (streams[camera.id]) {
     try {
+      logger.info(`Killing existing stream process for ${camera.name}`);
+      // Remove listeners to prevent triggering 'error'/'end' handlers during intentional kill
+      streams[camera.id].removeAllListeners('error');
+      streams[camera.id].removeAllListeners('end');
       streams[camera.id].kill('SIGKILL');
+      // Wait for process to die
+      await new Promise(resolve => setTimeout(resolve, 500));
     } catch (e) {
-      /* ignore */
+      logger.error(`Error killing stream for ${camera.name}: ${e.message}`);
     }
+    delete streams[camera.id];
   }
 
-  console.log(`Starting stream for ${camera.name}...`);
+  logger.info(`Starting stream for ${camera.name}...`);
 
   const command = ffmpeg(camera.url)
     .inputOptions([
@@ -90,15 +134,18 @@ function startStream(camera) {
     ])
     .output(outputPath)
     .on('start', (cmd) => {
-      console.log(`Stream ${camera.name} started.`);
+      logger.info(`Stream ${camera.name} started.`);
+      streamLocks[camera.id] = false;
       startWatchdog(camera, outputPath);
     })
     .on('error', (err) => {
-      console.error(`Error processing ${camera.name}:`, err.message);
+      logger.error(`Error processing ${camera.name}: ${err.message}`);
+      streamLocks[camera.id] = false;
       scheduleRetry(camera);
     })
     .on('end', () => {
-      console.log(`Stream ${camera.name} ended unexpectedly.`);
+      logger.warn(`Stream ${camera.name} ended unexpectedly.`);
+      streamLocks[camera.id] = false;
       scheduleRetry(camera);
     });
 
@@ -107,13 +154,30 @@ function startStream(camera) {
 }
 
 function scheduleRetry(camera) {
-  if (watchdogs[camera.id]) clearInterval(watchdogs[camera.id]);
+  // Clear any pending retry to prevent duplicates/debouncing
+  if (retryTimers[camera.id]) {
+    clearTimeout(retryTimers[camera.id]);
+    delete retryTimers[camera.id];
+  }
+
+  if (watchdogs[camera.id]) {
+    clearInterval(watchdogs[camera.id]);
+    delete watchdogs[camera.id];
+  }
+  
+  if (streams[camera.id]) {
+    // If the stream object still exists, ensure listeners are removed so late events don't fire
+    streams[camera.id].removeAllListeners('error');
+    streams[camera.id].removeAllListeners('end');
+    delete streams[camera.id];
+  }
 
   // Avoid rapid loops
-  setTimeout(() => {
-    console.log(`Retrying ${camera.name}...`);
+  retryTimers[camera.id] = setTimeout(() => {
+    logger.info(`Retrying ${camera.name}...`);
+    delete retryTimers[camera.id];
     startStream(camera);
-  }, 3000);
+  }, 5000); // Increased from 3s to 5s
 }
 
 function startWatchdog(camera, filePath) {
@@ -130,9 +194,14 @@ function startWatchdog(camera, filePath) {
 
       // If file hasn't updated in 10 seconds, restart
       if (diff > 10000) {
-        console.warn(
-          `Watchdog: Stream ${camera.name} froze (${diff}ms since last update). Restarting...`
+        logger.warn(
+          `Watchdog: Stream ${camera.name} froze (${Math.round(diff/1000)}s since last update). Restarting...`
         );
+        // Clear watchdog before restarting to prevent race
+        if (watchdogs[camera.id]) {
+          clearInterval(watchdogs[camera.id]);
+          delete watchdogs[camera.id];
+        }
         startStream(camera);
       }
     });
@@ -152,14 +221,21 @@ app.get('/api/cameras', (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  logger.info(`Server running at http://localhost:${PORT}`);
   loadCameras();
   cameras.forEach(startStream);
 });
 
 // Handle exit
 process.on('SIGINT', () => {
-  console.log('Stopping streams...');
-  Object.values(streams).forEach((command) => command.kill('SIGKILL'));
+  logger.info('Stopping streams...');
+  Object.values(watchdogs).forEach(clearInterval);
+  Object.values(streams).forEach((command) => {
+    try {
+      command.kill('SIGKILL');
+    } catch (e) {
+      // ignore
+    }
+  });
   process.exit();
 });
