@@ -7,11 +7,63 @@ document.addEventListener('DOMContentLoaded', async () => {
   const pipOverlay = document.getElementById('pip-overlay');
   const mainMuteIcon = document.getElementById('main-mute-icon');
   const pipMuteIcon = document.getElementById('pip-mute-icon');
+  const soundToggleBtn = document.getElementById('sound-toggle-btn');
+  const soundIconMuted = document.getElementById('sound-icon-muted');
+  const soundIconUnmuted = document.getElementById('sound-icon-unmuted');
 
   let cameras = [];
   let hlsInstances = {};
   let isSwapped = false; // false: cam1=main, cam2=pip
   let isPipMinimized = false;
+
+  // --- Global Sound State from URL ---
+  function getIsMutedFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const mutedParam = params.get('muted');
+    // Default to muted (1) if param is absent
+    if (mutedParam === null) return true;
+    return mutedParam !== '0';
+  }
+
+  function setMutedInUrl(isMuted) {
+    const params = new URLSearchParams(window.location.search);
+    params.set('muted', isMuted ? '1' : '0');
+    const newUrl = window.location.pathname + '?' + params.toString();
+    window.history.replaceState({}, '', newUrl);
+  }
+
+  let isGlobalMuted = getIsMutedFromUrl();
+
+  function updateSoundIcon() {
+    if (isGlobalMuted) {
+      soundIconMuted.style.display = '';
+      soundIconUnmuted.style.display = 'none';
+    } else {
+      soundIconMuted.style.display = 'none';
+      soundIconUnmuted.style.display = '';
+    }
+  }
+
+  function applyGlobalMute() {
+    mainVideo.muted = isGlobalMuted;
+    pipVideo.muted = isGlobalMuted;
+    if (!isGlobalMuted) {
+      mainVideo.volume = 1.0;
+      pipVideo.volume = 1.0;
+    }
+    updateSoundIcon();
+  }
+
+  // Initialize icon
+  updateSoundIcon();
+
+  // Sound toggle button click
+  soundToggleBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    isGlobalMuted = !isGlobalMuted;
+    setMutedInUrl(isGlobalMuted);
+    applyGlobalMute();
+  });
 
   // Fetch cameras
   try {
@@ -35,8 +87,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   function initPlayer(camera, videoEl, overlayEl) {
     if (!camera) return;
 
-    // Start muted
-    videoEl.muted = true;
+    // Apply global mute state
+    videoEl.muted = isGlobalMuted;
 
     // Set name in overlay
     overlayEl.querySelector('.camera-name').textContent = camera.name;
@@ -71,10 +123,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (data.fatal) {
             camera.offlineSince = Date.now();
             overlayEl.classList.add('visible');
-            
+
             // Trigger backend restart
-            console.log(`Fatal error on ${camera.name}, requesting backend restart...`);
-            fetch(`/api/restart/${camera.id}`, { method: 'POST' }).catch(console.error);
+            console.log(
+              `Fatal error on ${camera.name}, requesting backend restart...`,
+            );
+            fetch(`/api/restart/${camera.id}`, { method: 'POST' }).catch(
+              console.error,
+            );
 
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
@@ -87,7 +143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 break;
               default:
                 console.log(
-                  `Fatal error on ${camera.name}, restarting player in 5s...`
+                  `Fatal error on ${camera.name}, restarting player in 5s...`,
                 );
                 hls.destroy();
                 setTimeout(startPlayback, 3000);
@@ -110,9 +166,11 @@ document.addEventListener('DOMContentLoaded', async () => {
           console.log(`Native HLS error on ${camera.name}, retrying in 5s...`);
           camera.offlineSince = Date.now();
           overlayEl.classList.add('visible');
-          
+
           // Trigger backend restart
-          fetch(`/api/restart/${camera.id}`, { method: 'POST' }).catch(console.error);
+          fetch(`/api/restart/${camera.id}`, { method: 'POST' }).catch(
+            console.error,
+          );
 
           setTimeout(() => {
             videoEl.src = ''; // Clear to force reload
@@ -250,7 +308,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Attach listeners
   // Note: We attach to containers to capture clicks
   mainContainer.addEventListener('click', () =>
-    handleClick(mainContainer, mainVideo, mainMuteIcon, !isSwapped)
+    handleClick(mainContainer, mainVideo, mainMuteIcon, !isSwapped),
   );
   pipContainer.addEventListener('click', (e) => {
     e.stopPropagation(); // Prevent bubbling to main if they overlap weirdly
@@ -298,7 +356,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.touches.length === 2) {
       initialDistance = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
+        e.touches[0].clientY - e.touches[1].clientY,
       );
     }
   });
@@ -307,7 +365,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.touches.length === 2) {
       const currentDistance = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
+        e.touches[0].clientY - e.touches[1].clientY,
       );
       const diff = currentDistance - initialDistance;
       const sensitivity = 0.005;
@@ -370,7 +428,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   ['mousemove', 'mousedown', 'touchstart', 'click', 'keydown'].forEach(
     (evt) => {
       document.addEventListener(evt, resetIdleTimer, { passive: true });
-    }
+    },
   );
 
   // Initial activation
