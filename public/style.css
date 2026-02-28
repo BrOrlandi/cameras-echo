@@ -43,12 +43,15 @@ video {
   width: 100%;
   height: 100%;
   z-index: 1;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 /* PIP View */
 .video-container.pip {
-  bottom: 20px;
-  right: 20px;
+  top: calc(100% - var(--pip-height) - 20px);
+  left: calc(100% - var(--pip-width) - 20px);
   height: var(--pip-height);
   width: var(--pip-width);
 
