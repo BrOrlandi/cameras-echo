@@ -393,32 +393,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Idle Timer Logic
-  let idleTimeout;
-  const IDLE_DELAY = 3000; // Hide after 3 seconds of inactivity
-
-  function resetIdleTimer() {
-    document.body.classList.add('user-active');
-
-    if (idleTimeout) {
-      clearTimeout(idleTimeout);
-    }
-
-    idleTimeout = setTimeout(() => {
-      document.body.classList.remove('user-active');
-    }, IDLE_DELAY);
-  }
-
-  // Track user activity
-  ['mousemove', 'mousedown', 'touchstart', 'click', 'keydown'].forEach(
-    (evt) => {
-      document.addEventListener(evt, resetIdleTimer, { passive: true });
-    },
-  );
-
-  // Initial activation
-  resetIdleTimer();
-
   // Auto-refresh streams after 30 minutes to prevent freezing
   const STREAM_REFRESH_INTERVAL = 30 * 60 * 1000; // 30 minutes in milliseconds
   let streamRefreshTimeout;

@@ -173,9 +173,7 @@ video {
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  /* Hidden by default (idle) */
-  transition: all 0.3s ease;
+  opacity: 1;
 }
 
 /* 2x Size when NOT in fullscreen */
@@ -186,11 +184,6 @@ body.not-fullscreen .control-btn {
 
 body.not-fullscreen .control-btn:hover {
   transform: scale(2.1);
-}
-
-/* Show controls when body has 'user-active' class */
-body.user-active .control-btn {
-  opacity: 1;
 }
 
 .control-btn:hover {
