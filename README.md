@@ -1,31 +1,29 @@
 # Cameras Echo
 
-A local RTSP streaming server designed to display security camera feeds on an Alexa Echo Show (or any web browser). It transcodes RTSP streams to HLS using `ffmpeg` and provides a responsive web interface with Picture-in-Picture (PIP) support.
+A local RTSP streaming server designed to display security camera feeds on an Alexa Echo Show (or any web browser). It uses [mediamtx](https://github.com/bluenviron/mediamtx) to relay RTSP streams via WebRTC (near real-time) and HLS (fallback), and provides a responsive web interface with Picture-in-Picture (PIP) support.
 
 ## Features
 
-- **RTSP to HLS Transcoding**: Uses `ffmpeg` with hardware acceleration (`h264_videotoolbox` on macOS) for efficient streaming.
+- **WebRTC (WHEP)**: Primary playback via WebRTC for near real-time latency (~200ms).
+- **HLS Fallback**: Low-latency HLS for browsers without WebRTC support (e.g., Echo Show's Silk browser).
 - **Picture-in-Picture (PIP)**: Displays two camera feeds simultaneously. Double-click to swap streams.
-- **Audio Support**:
-  - Toggle audio for the active stream.
-  - Volume boost (15dB) for better audibility.
-  - Automatic transcoding to AAC for browser compatibility.
+- **Audio Support**: Toggle audio for the active stream.
 - **Resilience**:
-  - Automatic reconnection if camera goes offline.
-  - Watchdog to restart frozen streams.
+  - Automatic reconnection handled by mediamtx.
+  - WebRTC fallback to HLS on connection failure.
+  - Page auto-reload when all cameras are offline.
 - **User Interface**:
   - Fullscreen mode.
   - Manual Refresh button.
-  - Auto-hide controls after 3 seconds of inactivity.
   - Touch gestures: Pinch-to-zoom and pan.
 - **Background Service**: Scripts included to run as a macOS `launchd` service.
 
 ## Prerequisites
 
 - **Node.js**: Required to run the server.
-- **ffmpeg**: Must be installed and accessible in your system PATH.
+- **mediamtx**: Must be installed and accessible in your system PATH.
   ```bash
-  brew install ffmpeg
+  brew install mediamtx
   ```
 
 ## Installation
@@ -84,14 +82,14 @@ To ensure the server starts automatically on login and runs in the background:
 
 ## Architecture
 
-- **Backend (`server.js`)**: Express server that manages `ffmpeg` processes. It handles stream lifecycle, error recovery, and serves the HLS segments.
+- **Backend (`server.js`)**: Express server that generates a mediamtx config and manages the mediamtx process. mediamtx handles RTSP ingestion, WebRTC (WHEP) and HLS output natively.
 - **Frontend (`public/`)**:
   - `index.html`: Main UI structure.
-  - `app.js`: Handles HLS playback (using `hls.js` or native Safari support), UI interactions, and state management.
+  - `app.js`: Handles WebRTC (WHEP) playback with HLS fallback (via `hls.js` or native Safari support), UI interactions, and state management.
   - `style.css`: Responsive styling for the video overlay and controls.
 
 ## Troubleshooting
 
-- **No Audio**: Ensure your camera sends audio. The server attempts to boost volume, but if the source is silent, the stream will be too.
-- **Stream Lag**: HLS introduces a 5-10 second delay by design for stability.
-- **"Network Error"**: Check if the camera IP is reachable from the server machine. The server will auto-retry every 5 seconds.
+- **No Audio**: Ensure your camera sends audio. Audio is passed through without server-side processing.
+- **Stream Lag**: WebRTC provides near real-time playback. HLS fallback has ~1-3s delay with low-latency mode.
+- **"Network Error"**: Check if the camera IP is reachable from the server machine. mediamtx handles reconnection automatically.
