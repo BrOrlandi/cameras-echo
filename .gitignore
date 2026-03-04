@@ -1,5 +1,8 @@
 node_modules
 public/hls
 *.log
+*.bak
 cameras.txt
 *-audit.json
+go2rtc
+mediamtx-runtime.yml
